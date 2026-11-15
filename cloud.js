@@ -7,7 +7,7 @@ const HockeyCloud=(()=>{
  const notify=()=>{let el=document.getElementById('cloud-status');if(el)el.textContent=status};
  const say=x=>{status=x;notify()};
  const sections=['roster','settings','games','practice','history'];
- const subset=(x,k)=>k==='roster'?{players:x.players}:k==='settings'?{settings:x.settings}:k==='practice'?{practiceSessions:x.practiceSessions}:k==='history'?{history:x.history}:{games:x.games,mode:x.mode,goalies:x.goalies,day:x.day,game:x.game,shift:x.shift,seconds:x.seconds};
+ const subset=(x,k)=>k==='roster'?{players:x.players}:k==='settings'?{settings:x.settings}:k==='practice'?{practiceSessions:x.practiceSessions}:k==='history'?{history:x.history}:{games:x.games,gameSkaters:x.gameSkaters,gameAttendance:x.gameAttendance,mode:x.mode,goalies:x.goalies,day:x.day,game:x.game,shift:x.shift,seconds:x.seconds};
  const changed=(a,b,k)=>JSON.stringify(subset(a,k))!==JSON.stringify(subset(b,k));
  const permitted=k=>team&&(team.role==='admin'||!!team.assistant_permissions?.[k]);
  function onSave(data){
@@ -90,7 +90,7 @@ const HockeyCloud=(()=>{
   if(channel)await client.removeChannel(channel);
   channel=client.channel('hockey-team-'+id).on('postgres_changes',{event:'UPDATE',schema:'public',table:'team_data',filter:'team_id=eq.'+id},()=>refresh()).subscribe();
   render();
-  queueMicrotask(()=>{if(team?.id===id&&!calendarAttempted)previewCalendar()});
+  queueMicrotask(()=>{if(team?.id===id&&!calendarAttempted&&window.hockeyCalendarGetConfig?.().url)previewCalendar()});
  }
  async function refresh(){
   if(!team||pending.length||busy||paused)return;
@@ -143,6 +143,7 @@ const HockeyCloud=(()=>{
  let calendarEvents=[],calendarError='',calendarBusy=false,calendarFetchedAt=0,calendarAttempted=false,calendarView='agenda',calendarMonthOffset=0,calendarSelectedDate='',calendarWhen='all',calendarKind='all';
  async function previewCalendar(){
   if(!client||!team)return alert('Select a team first.');
+  if(!window.hockeyCalendarGetConfig?.().url){calendarEvents=[];calendarAttempted=true;calendarError='';render();return;}
   calendarBusy=true;calendarAttempted=true;calendarError='';render();
   try{
    const {data,error}=await client.functions.invoke('crossbar-preview',{body:{teamId:team.id}});
@@ -313,12 +314,12 @@ const HockeyCloud=(()=>{
  }
  function calendarPage(){
   if(!team)return '<section class="card"><h2>Calendar</h2><p class="muted">Select a team workspace in Settings to view its Crossbar calendar.</p></section>';
-  if((!calendarAttempted||calendarFetchedAt&&Date.now()-calendarFetchedAt>600000)&&!calendarBusy)queueMicrotask(()=>{if(team&&!calendarBusy)previewCalendar()});
+  if((window.hockeyCalendarGetConfig?.().url)&&(!calendarAttempted||calendarFetchedAt&&Date.now()-calendarFetchedAt>600000)&&!calendarBusy)queueMicrotask(()=>{if(team&&!calendarBusy)previewCalendar()});
   return calendarPanel();
  }
  function calendarSettingsPanel(){
   const config=window.hockeyCalendarGetConfig?.()||{},url=config.url||'';
-  return '<section class="card"><h2>Calendar integration</h2><p class="muted">Crossbar subscription for this team. Calendar events and opponent confirmation are in the Calendar menu.</p><label>Crossbar iCalendar URL <input id="crossbar-url" type="url" value="'+e(url)+'" placeholder="https://www.accounts.crossbar.org/calendar/ical/..." '+(!permitted('settings')?'disabled':'')+'></label><div class="row"><button onclick="HockeyCloud.saveCalendarUrl()" '+(!permitted('settings')?'disabled':'')+'>Save calendar URL</button><button onclick="HockeyCloud.previewCalendar()">Test connection / refresh</button></div><p class="muted">'+(url?'Team calendar URL saved.':'Using the original Crossbar test feed until a team URL is saved.')+'</p></section>';
+  return '<section class="card"><h2>Calendar integration</h2><p class="muted">Crossbar subscription for this team. Calendar events and opponent confirmation are in the Calendar menu.</p><label>Crossbar iCalendar URL <input id="crossbar-url" type="url" value="'+e(url)+'" placeholder="https://www.accounts.crossbar.org/calendar/ical/..." '+(!permitted('settings')?'disabled':'')+'></label><div class="row"><button onclick="HockeyCloud.saveCalendarUrl()" '+(!permitted('settings')?'disabled':'')+'>Save calendar URL</button><button onclick="HockeyCloud.previewCalendar()">Test connection / refresh</button></div><p class="muted">'+(url?'Team calendar URL saved.':'No calendar connected for this team. Add its Crossbar URL to load events.')+'</p></section>';
  }
  function saveCalendarUrl(){
   const input=document.getElementById('crossbar-url');
