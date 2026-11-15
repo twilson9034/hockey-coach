@@ -7,7 +7,7 @@ const HockeyCloud=(()=>{
  const notify=()=>{let el=document.getElementById('cloud-status');if(el)el.textContent=status};
  const say=x=>{status=x;notify()};
  const sections=['roster','settings','games','practice','history'];
- const subset=(x,k)=>k==='roster'?{players:x.players}:k==='settings'?{settings:x.settings}:k==='practice'?{practiceSessions:x.practiceSessions}:k==='history'?{history:x.history}:{games:x.games,gameSkaters:x.gameSkaters,gameAttendance:x.gameAttendance,mode:x.mode,goalies:x.goalies,day:x.day,game:x.game,shift:x.shift,seconds:x.seconds};
+ const subset=(x,k)=>k==='roster'?{players:x.players}:k==='settings'?{settings:x.settings}:k==='practice'?{practiceSessions:x.practiceSessions}:k==='history'?{history:x.history}:{games:x.games,daySchedule:x.daySchedule,statEvents:x.statEvents,gameClocks:x.gameClocks,lineupRecords:x.lineupRecords,gameSkaters:x.gameSkaters,gameAttendance:x.gameAttendance,mode:x.mode,goalies:x.goalies,day:x.day,game:x.game,shift:x.shift,seconds:x.seconds};
  const changed=(a,b,k)=>JSON.stringify(subset(a,k))!==JSON.stringify(subset(b,k));
  const permitted=k=>team&&(team.role==='admin'||!!team.assistant_permissions?.[k]);
  function onSave(data){
@@ -189,9 +189,11 @@ const HockeyCloud=(()=>{
  }
  function draftFor(event){
   const key=event.uid||event.start+'|'+event.title;
-  if(!gameDrafts[key]){const saved=(window.hockeyCalendarGetConfig?.().games||[]).find(x=>x.uid===key);gameDrafts[key]=saved?{opponents:[...saved.opponents],interval:saved.interval||20,rink:[...(saved.rinks||['','',''])]}:{opponents:[titleOpponent(event),'',''],interval:20,rink:['','','']};}
+  if(!gameDrafts[key]){const saved=(window.hockeyCalendarGetConfig?.().games||[]).find(x=>x.uid===key);gameDrafts[key]=saved?{opponents:[...saved.opponents],interval:saved.interval||20,rink:[...(saved.rinks||[])]}:{opponents:[titleOpponent(event)||''],interval:20,rink:['']};}
   return {key,draft:gameDrafts[key]};
  }
+ function addDraftGame(key){const d=gameDrafts[key];if(!d||d.opponents.length>=12)return;d.opponents.push('');d.rink.push('');window.HockeyCloud.renderCalendar?.();}
+ function removeDraftGame(key,index){const d=gameDrafts[key];if(!d||d.opponents.length<=1)return;d.opponents.splice(index,1);d.rink.splice(index,1);window.HockeyCloud.renderCalendar?.();}
  function changeDraft(key,field,index,value){
   const draft=gameDrafts[key];if(!draft)return;
   if(field==='interval')draft.interval=Math.max(1,Math.min(120,Number(value)||20));
@@ -225,9 +227,9 @@ const HockeyCloud=(()=>{
   }
   if(!iso||!Number.isFinite(Date.parse(iso)))return alert('Could not read calendar start time: '+start);
   iso=new Date(iso).toISOString();
-  if(!confirm('Save these three games to the team workspace? This updates the upcoming Game Day schedule, not generated rotations.'))return;
+  if(!confirm('Save '+draft.opponents.length+' game(s) to this calendar day? This does not change team defaults.'))return;
   const ok=window.hockeyCalendarSave({uid:key,start:iso,location:event.location||'',title:event.title||'',opponents:[...draft.opponents],rinks:[...draft.rink],interval:draft.interval});
-  if(ok)say('Three-game schedule saved · see Game Day');
+  if(ok)say(draft.opponents.length+' game(s) saved · see Game Day');
  }
  function calendarDateKey(event){
    const raw=String(event.start||'').trim();
@@ -292,17 +294,18 @@ const HockeyCloud=(()=>{
     card+='<p class="muted">Status: '+e(event.status||'Not specified')+'</p>';
     card+='<strong>Original Crossbar notes</strong><pre style="white-space:pre-wrap;overflow-wrap:anywhere;font:inherit">'+e(event.notes||'(No notes provided)')+'</pre>';
     if(practice)return card+'<p class="muted">Practice — no game slots proposed.</p></details>';
-    card+='<h3>Three-game test lineup</h3><p class="muted">Possible opponents: '+e(opponents.join(', ')||'None detected')+'. Calendar notes do not establish game order.</p>';
+    card+='<h3>Game Day opponents</h3><p class="muted">Possible opponents: '+e(opponents.join(', ')||'None detected')+'. Calendar notes do not establish game order.</p>';
     card+='<label>Minutes between game starts <input type="number" min="1" max="120" value="'+draft.interval+'" onchange="HockeyCloud.changeDraft('+keyLiteral+',&#39;interval&#39;,0,this.value)"></label>';
-    for(let i=0;i<3;i++){
+    for(let i=0;i<draft.opponents.length;i++){
      const options=['',...opponents.filter(x=>!draft.opponents.includes(x)||x===draft.opponents[i])];if(draft.opponents[i]&&!options.includes(draft.opponents[i]))options.push(draft.opponents[i]);
      card+='<div class="row"><label>Game '+(i+1)+' opponent <select onchange="HockeyCloud.changeDraft('+keyLiteral+',&#39;opponents&#39;,'+i+',this.value)">'+options.map(v=>'<option value="'+e(v)+'" '+(draft.opponents[i]===v?'selected':'')+'>'+(v?e(v):'Select opponent')+'</option>').join('')+'</select></label>';
-     card+='<label>Or type opponent <input placeholder="Team name" value="'+e(draft.opponents[i])+'" onchange="HockeyCloud.changeDraft('+keyLiteral+',&#39;opponents&#39;,'+i+',this.value)"></label>';card+='<label>Rink <input placeholder="Rink / ice section" value="'+e(draft.rink[i])+'" onchange="HockeyCloud.changeDraft('+keyLiteral+',&#39;rink&#39;,'+i+',this.value)"></label></div>';
+     card+='<label>Or type opponent <input placeholder="Team name" value="'+e(draft.opponents[i])+'" onchange="HockeyCloud.changeDraft('+keyLiteral+',&#39;opponents&#39;,'+i+',this.value)"></label>';card+='<label>Rink <input placeholder="Rink / ice section" value="'+e(draft.rink[i])+'" onchange="HockeyCloud.changeDraft('+keyLiteral+',&#39;rink&#39;,'+i+',this.value)"></label><button onclick="HockeyCloud.removeDraftGame('+keyLiteral+','+i+')" '+(draft.opponents.length===1?'disabled':'')+'>Remove</button></div>';
     }
+    card+='<button onclick="HockeyCloud.addDraftGame('+keyLiteral+')" '+(draft.opponents.length>=12?'disabled':'')+'>+ Add game</button>';
     const complete=draft.opponents.every(Boolean),alreadySaved=(window.hockeyCalendarGetConfig?.().games||[]).some(x=>x.uid===key);
     card+='<p><strong>Proposed lineup (not saved)</strong></p>';
-    card+='<div data-calendar-preview="'+encodeURIComponent(key)+'">';for(let i=0;i<3;i++)card+='<p>Game '+(i+1)+': '+e(draft.opponents[i]||'Opponent not selected')+' · '+(i===0?'Event start':('+'+i*draft.interval+' min'))+(draft.rink[i]?' · '+e(draft.rink[i]):'')+'</p>';card+='</div>';
-    card+='<p class="muted">'+(complete?'All three opponents selected.':'Select all three opponents to complete the preview.')+'</p><button class="primary" '+(!permitted('settings')?'disabled':'')+' onclick="HockeyCloud.saveCalendarDraft('+keyLiteral+')">'+(alreadySaved?'Update saved Game Day':'Save to team Game Day')+'</button></details>';
+    card+='<div data-calendar-preview="'+encodeURIComponent(key)+'">';for(let i=0;i<draft.opponents.length;i++)card+='<p>Game '+(i+1)+': '+e(draft.opponents[i]||'Opponent not selected')+' · '+(i===0?'Event start':('+'+i*draft.interval+' min'))+(draft.rink[i]?' · '+e(draft.rink[i]):'')+'</p>';card+='</div>';
+    card+='<p class="muted">'+(complete?'All opponents selected.':'Enter an opponent for every game.')+'</p><button class="primary" '+(!permitted('settings')?'disabled':'')+' onclick="HockeyCloud.saveCalendarDraft('+keyLiteral+')">'+(alreadySaved?'Update saved Game Day':'Save to team Game Day')+'</button></details>';
     return card;
    }).join('');
    if(selected.length>35)out+='<p class="muted">Showing first 35 of '+selected.length+' events.</p>';
