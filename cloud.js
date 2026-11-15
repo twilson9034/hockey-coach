@@ -83,7 +83,7 @@ const HockeyCloud=(()=>{
   const selected=teams.find(t=>t.id===id);if(!selected)return alert('Team not available');
   const {data,error}=await client.from('team_data').select('data,version,imported_at').eq('team_id',id).single();
   if(error)return alert(error.message);
-  team=selected;calendarEvents=[];calendarAttempted=false;calendarFetchedAt=0;localStorage.setItem('hockey-coach-last-team',id);version=Number(data.version);pending=[];paused=false;
+  team=selected;calendarEvents=[];calendarAttempted=false;calendarFetchedAt=0;calendarShowAll=false;calendarWhen='all';calendarKind='all';localStorage.setItem('hockey-coach-last-team',id);version=Number(data.version);pending=[];paused=false;
   if(data.imported_at){
    base=clone(data.data);window.hockeyCloudSetData(data.data,id);say('Synced');
   }else{base=null;window.hockeyCloudSetData(null,id);say('Team awaits administrator import')}
@@ -140,7 +140,7 @@ const HockeyCloud=(()=>{
   if(error)return alert(error.message);
   team.assistant_permissions=perms;render();
  }
- let calendarEvents=[],calendarError='',calendarBusy=false,calendarShowAll=false,calendarFetchedAt=0,calendarAttempted=false,calendarView='agenda',calendarMonthOffset=0,calendarSelectedDate='';
+ let calendarEvents=[],calendarError='',calendarBusy=false,calendarShowAll=false,calendarFetchedAt=0,calendarAttempted=false,calendarView='agenda',calendarMonthOffset=0,calendarSelectedDate='',calendarWhen='all',calendarKind='all';
  async function previewCalendar(){
   if(!client||!team)return alert('Select a team first.');
   calendarBusy=true;calendarAttempted=true;calendarError='';render();
@@ -148,12 +148,17 @@ const HockeyCloud=(()=>{
    const {data,error}=await client.functions.invoke('crossbar-preview',{body:{teamId:team.id}});
    if(error)throw Error(data?.error||error.message);
    if(data?.error)throw Error(data.error);
-   calendarEvents=Array.isArray(data.events)?data.events:[];calendarShowAll=false;calendarFetchedAt=Date.now();
+   calendarEvents=Array.isArray(data.events)?data.events:[];calendarFetchedAt=Date.now();
    say('Crossbar feed loaded: '+calendarEvents.length+' events (preview only)');
   }catch(err){calendarError=String(err.message||err);say('Calendar preview unavailable')}
   calendarBusy=false;render();
  }
  function toggleCalendarAll(){calendarShowAll=!calendarShowAll;render()}
+ function setCalendarFilter(field,value){if(field==='when')calendarWhen=value;if(field==='kind')calendarKind=value;render()}
+ function isTeamMatch(ev){const name=String(team?.name||'').trim().toLowerCase();return !!name&&[ev.title,ev.notes].join(' ').toLowerCase().includes(name)}
+ function isPractice(ev){return /practice|training|skills|scrimmage practice/i.test(String(ev.title||''))}
+ function isPastEvent(ev){const key=calendarDateKey(ev),now=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Anchorage',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date()),get=t=>now.find(p=>p.type===t)?.value||'',today=get('year')+'-'+get('month')+'-'+get('day');if(!key)return false;if(key!==today)return key<today;const raw=String(ev.start||'');if(/^\d{8}T\d{6}Z$/.test(raw))return new Date(raw.replace(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$/,'$1-$2-$3T$4:$5:$6Z')).getTime()<Date.now();return false}
+ function filteredCalendarEvents(){return calendarEvents.filter(ev=>(calendarShowAll||isTeamMatch(ev))&&(calendarKind==='all'||(calendarKind==='practice'?isPractice(ev):!isPractice(ev)))&&(calendarWhen==='all'||(calendarWhen==='past'?isPastEvent(ev):!isPastEvent(ev))))}
 
  let gameDrafts={};
  function displayCalendarDate(raw){
@@ -248,7 +253,7 @@ const HockeyCloud=(()=>{
  function calendarMonthPanel(){
   const now=new Date(),month=new Date(now.getFullYear(),now.getMonth()+calendarMonthOffset,1),first=month.getDay(),days=new Date(month.getFullYear(),month.getMonth()+1,0).getDate();
   const counts={};
-  for(const event of calendarEvents){
+  for(const event of filteredCalendarEvents()){
    if(String(event.status||'').toUpperCase()==='CANCELLED')continue;
    const key=calendarDateKey(event);if(key)counts[key]=(counts[key]||0)+1;
   }
@@ -273,13 +278,13 @@ const HockeyCloud=(()=>{
   let out='<section class="card"><h2>Crossbar calendar · test preview</h2><p class="muted">Crossbar events. Select opponents and rink assignments, then save the confirmed games to Game Day.</p><button onclick="HockeyCloud.previewCalendar()" '+(calendarBusy?'disabled':'')+'>'+(calendarBusy?'Loading calendar…':'Refresh Crossbar schedule')+'</button>';
   out+='<div class="row"><button class="'+(calendarView==='agenda'?'primary':'')+'" onclick="HockeyCloud.setCalendarView(&#39;agenda&#39;)">Agenda</button><button class="'+(calendarView==='month'?'primary':'')+'" onclick="HockeyCloud.setCalendarView(&#39;month&#39;)">Month</button></div>';
   if(calendarError)out+='<p class="muted">'+e(calendarError)+'</p>';
-  if(calendarView==='month')return out+calendarMonthPanel()+'</section>';
+  if(calendarView==='month')return out+'<div class="row"><button onclick="HockeyCloud.toggleCalendarAll()">'+(calendarShowAll?'Show team matches':'Show all events')+'</button><label>When <select onchange="HockeyCloud.setCalendarFilter(&#39;when&#39;,this.value)">'+['all','upcoming','past'].map(v=>'<option value="'+v+'" '+(calendarWhen===v?'selected':'')+'>'+v+'</option>').join('')+'</select></label><label>Type <select onchange="HockeyCloud.setCalendarFilter(&#39;kind&#39;,this.value)">'+['all','game','practice'].map(v=>'<option value="'+v+'" '+(calendarKind===v?'selected':'')+'>'+v+'</option>').join('')+'</select></label></div>'+calendarMonthPanel()+'</section>';
   if(calendarEvents.length){
    const relevant=calendarEvents.filter(x=>[x.title,x.notes].join(' ').toLowerCase().includes(team.name.toLowerCase()));
-   const selected=calendarSelectedDate?calendarEvents.filter(x=>calendarDateKey(x)===calendarSelectedDate):(calendarShowAll?calendarEvents:(relevant.length?relevant:calendarEvents));
+   const selected=filteredCalendarEvents().filter(x=>!calendarSelectedDate||calendarDateKey(x)===calendarSelectedDate);
    if(calendarSelectedDate)out+='<div class="row"><strong>'+e(calendarSelectedDate)+'</strong><button onclick="HockeyCloud.setCalendarView(&#39;agenda&#39;)">Show all dates</button></div>'+(selected.length?'':'<p class="muted">No events scheduled on this date.</p>');
    out+='<p class="muted">'+calendarEvents.length+' events returned · '+relevant.length+' mention '+e(team.name)+'.</p>';
-   out+='<button onclick="HockeyCloud.toggleCalendarAll()">'+(calendarShowAll?'Show team matches':'Show all events')+'</button>';
+   out+='<div class="row"><button onclick="HockeyCloud.toggleCalendarAll()">'+(calendarShowAll?'Show team matches':'Show all events')+'</button><label>When <select onchange="HockeyCloud.setCalendarFilter(&#39;when&#39;,this.value)">'+['all','upcoming','past'].map(v=>'<option value="'+v+'" '+(calendarWhen===v?'selected':'')+'>'+v+'</option>').join('')+'</select></label><label>Type <select onchange="HockeyCloud.setCalendarFilter(&#39;kind&#39;,this.value)">'+['all','game','practice'].map(v=>'<option value="'+v+'" '+(calendarKind===v?'selected':'')+'>'+v+'</option>').join('')+'</select></label></div>'+(selected.length?'':'<p class="muted">No events match the selected filters.</p>');
    out+=selected.slice(0,35).map(event=>{
     const practice=/practice/i.test(event.title||''),opponents=candidateOpponents(event);
     const {key,draft}=draftFor(event),keyLiteral='decodeURIComponent(&#39;'+encodeURIComponent(key)+'&#39;)';
@@ -385,6 +390,6 @@ const HockeyCloud=(()=>{
  function canEdit(section){return !team||(!!base&&permitted(section))}
  function retry(){paused=false;drain()}
  window.addEventListener('online',()=>drain());
- return {init,onSave,canEdit,panel,calendarPage,setCalendarView,openCalendarDate,moveCalendarMonth,setBrandColor,uploadBrandLogo,resetBrand,saveCalendarUrl,previewCalendar,toggleCalendarAll,changeDraft,saveCalendarDraft,signIn,verifyCode,signOut,createTeam,selectTeam,importLocal,initializeTeam,invite,acceptInvite,setPermission,retry,get nextCalendarEvent(){return nextCalendarEvent()},get team(){return team},get pending(){return pending.length}};
+ return {init,onSave,canEdit,panel,calendarPage,setCalendarView,setCalendarFilter,openCalendarDate,moveCalendarMonth,setBrandColor,uploadBrandLogo,resetBrand,saveCalendarUrl,previewCalendar,toggleCalendarAll,changeDraft,saveCalendarDraft,signIn,verifyCode,signOut,createTeam,selectTeam,importLocal,initializeTeam,invite,acceptInvite,setPermission,retry,get nextCalendarEvent(){return nextCalendarEvent()},get team(){return team},get pending(){return pending.length}};
 })();
 window.HockeyCloud=HockeyCloud;
