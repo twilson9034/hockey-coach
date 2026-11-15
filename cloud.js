@@ -192,8 +192,8 @@ const HockeyCloud=(()=>{
   if(!gameDrafts[key]){const saved=(window.hockeyCalendarGetConfig?.().games||[]).find(x=>x.uid===key);gameDrafts[key]=saved?{opponents:[...saved.opponents],interval:saved.interval||20,rink:[...(saved.rinks||[])]}:{opponents:[titleOpponent(event)||''],interval:20,rink:['']};}
   return {key,draft:gameDrafts[key]};
  }
- function addDraftGame(key){const d=gameDrafts[key];if(!d||d.opponents.length>=12)return;d.opponents.push('');d.rink.push('');window.HockeyCloud.renderCalendar?.();}
- function removeDraftGame(key,index){const d=gameDrafts[key];if(!d||d.opponents.length<=1)return;d.opponents.splice(index,1);d.rink.splice(index,1);window.HockeyCloud.renderCalendar?.();}
+ function addDraftGame(key){const d=gameDrafts[key];if(!d||d.opponents.length>=12)return;d.opponents.push('');d.rink.push('');document.getElementById('app').innerHTML=calendarPage();}
+ function removeDraftGame(key,index){const d=gameDrafts[key];if(!d||d.opponents.length<=1)return;d.opponents.splice(index,1);d.rink.splice(index,1);document.getElementById('app').innerHTML=calendarPage();}
  function changeDraft(key,field,index,value){
   const draft=gameDrafts[key];if(!draft)return;
   if(field==='interval')draft.interval=Math.max(1,Math.min(120,Number(value)||20));
@@ -205,6 +205,7 @@ const HockeyCloud=(()=>{
   const saveButton=document.querySelector('[data-calendar-save="'+encodeURIComponent(key)+'"]');
   if(saveButton)saveButton.disabled=!permitted('settings');
  }
+ function activateCalendarDay(key){if(window.hockeyCalendarActivate?.(key))say('Selected Game Day · open Game Day')}
  function saveCalendarDraft(key){
   const event=calendarEvents.find(x=>(x.uid||x.start+'|'+x.title)===key),draft=gameDrafts[key];
   if(!event||!draft)return alert('Calendar event not found. Refresh the feed.');
@@ -305,6 +306,7 @@ const HockeyCloud=(()=>{
     const complete=draft.opponents.every(Boolean),alreadySaved=(window.hockeyCalendarGetConfig?.().games||[]).some(x=>x.uid===key);
     card+='<p><strong>Proposed lineup (not saved)</strong></p>';
     card+='<div data-calendar-preview="'+encodeURIComponent(key)+'">';for(let i=0;i<draft.opponents.length;i++)card+='<p>Game '+(i+1)+': '+e(draft.opponents[i]||'Opponent not selected')+' · '+(i===0?'Event start':('+'+i*draft.interval+' min'))+(draft.rink[i]?' · '+e(draft.rink[i]):'')+'</p>';card+='</div>';
+    if(alreadySaved)card+='<button onclick="HockeyCloud.activateCalendarDay('+keyLiteral+')">Use this Game Day</button>';
     card+='<p class="muted">'+(complete?'All opponents selected.':'Enter an opponent for every game.')+'</p><button class="primary" '+(!permitted('settings')?'disabled':'')+' onclick="HockeyCloud.saveCalendarDraft('+keyLiteral+')">'+(alreadySaved?'Update saved Game Day':'Save to team Game Day')+'</button></details>';
     return card;
    }).join('');
@@ -393,6 +395,6 @@ const HockeyCloud=(()=>{
  function canEdit(section){return !team||(!!base&&permitted(section))}
  function retry(){paused=false;drain()}
  window.addEventListener('online',()=>drain());
- return {init,onSave,canEdit,panel,calendarPage,setCalendarView,setCalendarFilter,openCalendarDate,moveCalendarMonth,setBrandColor,uploadBrandLogo,resetBrand,saveCalendarUrl,previewCalendar,changeDraft,saveCalendarDraft,signIn,verifyCode,signOut,createTeam,selectTeam,importLocal,initializeTeam,invite,acceptInvite,setPermission,retry,get nextCalendarEvent(){return nextCalendarEvent()},get team(){return team},get pending(){return pending.length}};
+ return {init,onSave,canEdit,panel,calendarPage,setCalendarView,setCalendarFilter,openCalendarDate,moveCalendarMonth,setBrandColor,uploadBrandLogo,resetBrand,saveCalendarUrl,previewCalendar,changeDraft,addDraftGame,removeDraftGame,activateCalendarDay,saveCalendarDraft,signIn,verifyCode,signOut,createTeam,selectTeam,importLocal,initializeTeam,invite,acceptInvite,setPermission,retry,get nextCalendarEvent(){return nextCalendarEvent()},get team(){return team},get pending(){return pending.length}};
 })();
 window.HockeyCloud=HockeyCloud;
