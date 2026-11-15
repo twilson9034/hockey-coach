@@ -29,13 +29,13 @@ function replanGame(g){
  save();render();
 }
 function setGameSkaters(g,value){
- if(!window.HockeyCloud.canEdit('games'))return;
+ if(window.HockeyCloud.team&&!window.HockeyCloud.canEdit('games'))return;
  const n=Math.max(1,Math.min(10,Math.round(Number(value)||s.settings.skaters)));
  if(gamePresent(g).length-1<n)return alert('Not enough available players for '+n+' skaters plus a goalie.');
  s.gameSkaters[g]=n;replanGame(g);save();render();
 }
 function toggleGameAttendance(g,id,checked){
- if(!window.HockeyCloud.canEdit('games'))return;
+ if(window.HockeyCloud.team&&!window.HockeyCloud.canEdit('games'))return;
  const ids=gamePresent(g),next=checked?[...new Set([...ids,id])]:ids.filter(x=>x!==id);
  if(s.games[g]&&(!next.includes(s.games[g].goalie)||next.length-1<gameSkaters(g)))return alert('Keep the goalie and enough skaters available. Change the goalie or format first.');
  s.gameAttendance[g]=next;replanGame(g);save();render();
@@ -106,7 +106,7 @@ function nextPlannedLine(){stop();let gm=s.games[s.game];if(s.shift>=gm.shifts.l
 function lineupTotals(){let r=lineupRecord(),ev=r.events,totals={},c=gameClock(),now=Date.now(),end=c.ended?c.endedAt||now:now,breaks=[],open=null;for(let mark of r.boundaries||[]){if(mark.type==='end')open=mark.wall;else if(mark.type==='start'&&open!==null){breaks.push([open,mark.wall]);open=null}}if(open!==null)breaks.push([open,now]);for(let i=0;i<ev.length;i++){let from=ev[i].stamp.wall,to=Math.min(ev[i+1]?.stamp.wall??end,end);if(to<=from)continue;let seconds=(to-from)/1000;for(let [x,y] of breaks)seconds-=Math.max(0,Math.min(to,y)-Math.max(from,x))/1000;seconds=Math.max(0,seconds);for(let id of ev[i].after)totals[id]=(totals[id]||0)+seconds}return totals}
 function statsRecord(){let k=s.day+'-'+s.game;return s.statEvents[k]||(s.statEvents[k]=[])}
 function recordStat(type,side){
- if(!window.HockeyCloud.canEdit('games'))return alert('Game editing permission required.');
+ if(window.HockeyCloud.team&&!window.HockeyCloud.canEdit('games'))return alert('Game editing permission required.');
  const c=gameClock();if(c.ended)return alert('Start the next period before recording more events.');
  if(side==='us'){pendingStat={type,side,day:s.day,game:s.game,playerId:null,stage:'player'};render();return}
  commitStat(type,side,null);
@@ -143,10 +143,10 @@ function statPlayerPicker(){
  const title=pick.stage==='primary'?'Primary assist':pick.stage==='secondary'?'Secondary assist':'Select player for '+pick.type;
  return '<section class="stat-picker"><h4>'+e(title)+'</h4><div class="stat-player-grid">'+ids.map(id=>'<button type="button" onclick="'+action+'('+id+')">'+e(label(id))+'</button>').join('')+'</div><div class="row"><button onclick="'+action+'(null)">None / unknown</button><button onclick="cancelStatPlayer()">Cancel</button></div></section>';
 }
-function undoStat(){if(!window.HockeyCloud.canEdit('games'))return;let ev=statsRecord();if(!ev.length)return;if(!confirm('Undo the most recent game event?'))return;ev.pop();save();render()}
-function deleteStat(id){if(!window.HockeyCloud.canEdit('games'))return; if(!confirm('Delete this recorded event?'))return;s.statEvents[s.day+'-'+s.game]=statsRecord().filter(x=>x.id!==id);save();render()}
+function undoStat(){if(window.HockeyCloud.team&&!window.HockeyCloud.canEdit('games'))return;let ev=statsRecord();if(!ev.length)return;if(!confirm('Undo the most recent game event?'))return;ev.pop();save();render()}
+function deleteStat(id){if(window.HockeyCloud.team&&!window.HockeyCloud.canEdit('games'))return; if(!confirm('Delete this recorded event?'))return;s.statEvents[s.day+'-'+s.game]=statsRecord().filter(x=>x.id!==id);save();render()}
 function editStat(id){
- if(!window.HockeyCloud.canEdit('games'))return;
+ if(window.HockeyCloud.team&&!window.HockeyCloud.canEdit('games'))return;
  const event=statsRecord().find(x=>x.id===id);if(!event)return;
  const type=prompt('Event type: goal, shot, save, penalty',event.type);if(type===null)return;
  if(!['goal','shot','save','penalty'].includes(type.toLowerCase().trim()))return alert('Unknown event type.');
