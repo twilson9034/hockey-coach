@@ -1,0 +1,26 @@
+const vm=require('node:vm'),fs=require('node:fs'),assert=require('node:assert/strict');
+const storage=new Map(),node={style:{setProperty(){}},setAttribute(){},querySelectorAll:()=>[],prepend(){}};
+const document={documentElement:node,querySelector:()=>node,getElementById:()=>node,querySelectorAll:()=>[],createElement:()=>({...node,click(){}})};
+const ctx=vm.createContext({document,window:{HockeyCloud:{team:null,canEdit:()=>true,panel:()=>'',init:()=>Promise.resolve(),onSave(){}}},localStorage:{getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v)},navigator:{},alert(){},confirm:()=>true,setInterval(){},setTimeout(){},console,crypto:require('node:crypto').webcrypto,FormData:class{constructor(entries){this.entries=entries}get(k){return this.entries[k]||''}getAll(k){return this.entries[k]||[]}},Blob,Uint8Array,TextDecoder,btoa,atob,URL});
+const run=x=>vm.runInContext(x,ctx);
+run(fs.readFileSync('development.js','utf8'));run(fs.readFileSync('app.js','utf8'));
+assert.equal(run('s.settings.developmentEnabled'),false);
+run("updateSetting('developmentEnabled',true);devSkill='balance';devSaveAssessments({date:'2026-11-16',coach:'Coach', 'rating-1':'2','note-1':'<b>note</b>'})");
+assert.equal(run('devData().assessments.length'),1);assert.equal(run("devLatest(1,'balance','practice').rating"),2);assert.equal(run("devLatest(1,'balance','game')"),undefined);
+assert.ok(run("devPlayer='1';devPlayerView().includes('&lt;b&gt;note&lt;/b&gt;')"));
+run("s=migrateData(JSON.parse(localStorage.getItem(KEY)))");assert.equal(run('devData().assessments.length'),1);
+run("selectDivision('18U');updateSetting('gameMinutes',40)");assert.equal(run('devAge()'),'18U');assert.ok(run("devVisibleSkills().some(x=>x.id==='anticipate')"));
+run("selectDivision('8U')");assert.equal(run('devAge()'),'8U');assert.equal(run("devVisibleSkills().some(x=>x.id==='anticipate')"),false);
+run("s.practiceSessions.unshift({date:'2026-11-16',playerId:1});s.settings.practiceMode='roundRobin'");assert.equal(run('practiceRank()[0].id'),2);assert.equal(run('practiceCount(1)'),1);assert.equal(run("practiceView().includes('undefined')"),false);
+run("devAddSkill({name:'Team skill',cue:'Observe control',age:'8'})");assert.equal(run('devData().skills.length'),1);
+run("window.HockeyCloud.canEdit=()=>false");assert.equal(run('devCommit(d=>d.assessments=[])'),false);
+run("window.HockeyCloud.canEdit=()=>true;tab='development';updateSetting('developmentEnabled',false)");assert.equal(run('tab'),'day');assert.equal(run('devData().assessments.length'),1);
+run("updateSetting('developmentEnabled',true);devRemove('assessments',devData().assessments[0].id)");assert.equal(run('devData().assessments.length'),0);
+(async()=>{
+ ctx.pdf={size:15,name:'test.pdf',arrayBuffer:async()=>Buffer.from('%PDF-1.4\n%%EOF')};
+ await run("devAddGuide({title:'Practice',date:'2026-11-16',pdf,skills:['balance']})");
+ assert.equal(run('devData().guides.length'),1);assert.equal(run('devData().guides[0].skills[0]'),'balance');
+ for(const page of ['assess','team','player','library','guides'])assert.ok(run(`devPage='${page}';developmentView().includes('Player Development')`));
+ run("devPage='guides';window.hockeyCloudSetData(null,null)");assert.equal(run('devPage'),'assess');
+ console.log('PASS: migration/persistence, age/custom rules, context separation, escaped notes, goalie rotation, permissions, retention, correction, PDF links and all views');
+})().catch(e=>{console.error(e);process.exitCode=1});
